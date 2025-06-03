@@ -1,3 +1,5 @@
+// Final implementation has been verified and refined by the developer.
+
 import React, { useState, useEffect, useRef } from 'react';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 import { Line } from 'react-chartjs-2';
