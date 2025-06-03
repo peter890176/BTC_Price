@@ -1,13 +1,11 @@
-import logo from './logo.svg';
-import './App.css';
-import PriceDashboard from './components/PriceDashboard';
+import React from 'react';
 import PriceChart from './components/PriceChart';
+import './App.css';
 
 function App() {
   return (
     <div className="App">
       <PriceChart />
-      <PriceDashboard />
     </div>
   );
 }

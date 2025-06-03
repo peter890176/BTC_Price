@@ -131,10 +131,9 @@ const previousCloseLabelPlugin = {
 ChartJS.register(verticalLinePlugin, previousCloseLabelPlugin);
 
 function PriceChart() {
-  const [interval, setInterval] = useState('1m'); // Time interval state
+  const [interval, setIntervalState] = useState('1m'); // Time interval state
   const [isComponentReady, setIsComponentReady] = useState(false); // Component ready state
   const [currentPrice, setCurrentPrice] = useState(null); // Current price
-  const [priceChange24h, setPriceChange24h] = useState(null); // 24h price change
   const [chartData, setChartData] = useState({
     labels: [],
     datasets: [
@@ -147,7 +146,6 @@ function PriceChart() {
       },
     ],
   });
-  const [yesterdayClose, setYesterdayClose] = useState(null);
   const [previousClose, setPreviousClose] = useState(null); // More generic previous period closing price
   const chartRef = useRef(null); // Ref for chart instance
   const wsRef = useRef(null); // WebSocket reference
@@ -262,10 +260,6 @@ function PriceChart() {
         
         if (previousClosePrice) {
           setPreviousClose(previousClosePrice);
-          // For backward compatibility, also set yesterdayClose if 1m interval
-          if (interval === '1m') {
-            setYesterdayClose(previousClosePrice);
-          }
           console.log(`${description} price fetched:`, previousClosePrice);
         } else {
           console.error(`Could not parse ${description} price from API response:`, data);
@@ -276,50 +270,6 @@ function PriceChart() {
     };
     fetchPreviousClose();
   }, [interval]); // Re-fetch when interval changes
-
-  // Fetch 24h price statistics
-  useEffect(() => {
-    const fetch24hStats = async () => {
-      try {
-        const response = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
-        if (!response.ok) {
-          throw new Error(`Error fetching 24h stats: ${response.statusText}`);
-        }
-        const data = await response.json();
-        // Only update 24h change percentage, let fast price API handle price updates
-        setPriceChange24h(parseFloat(data.priceChangePercent));
-        console.log("24h change percentage fetched:", data.priceChangePercent);
-      } catch (error) {
-        console.error("Failed to fetch 24h stats:", error);
-      }
-    };
-    
-    // Fast price updates - fetch current price every 2 seconds
-    const fetchFastPrice = async () => {
-      try {
-        const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-        if (!response.ok) {
-          throw new Error(`Error fetching price: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setCurrentPrice(parseFloat(data.price));
-      } catch (error) {
-        console.error("Failed to fetch fast price:", error);
-      }
-    };
-
-    fetch24hStats();
-    
-    // Update 24h percentage change every 10 seconds (less frequent since it changes slower)
-    const interval24h = setInterval(fetch24hStats, 10000);
-    // Update price every 1 second for ultra-frequent updates
-    const intervalFastPrice = setInterval(fetchFastPrice, 1000);
-    
-    return () => {
-      clearInterval(interval24h);
-      clearInterval(intervalFastPrice);
-    };
-  }, []);
 
   // Fetch historical K-line data and setup WebSocket connection
   useEffect(() => {
@@ -510,12 +460,12 @@ function PriceChart() {
               fill: false,
               tension: 0.1,
               spanGaps: false, // Don't connect null values
-              pointRadius: (context) => {
+              pointRadius: function(context) {
                 // Only show dot for the last non-null point
                 const isLastNonNull = context.dataIndex === prices.findLastIndex(price => price !== null);
                 return isLastNonNull ? 6 : 0;
               },
-              pointBackgroundColor: (context) => {
+              pointBackgroundColor: function(context) {
                 // Last point color matches line color
                 const isLastNonNull = context.dataIndex === prices.findLastIndex(price => price !== null);
                 if (isLastNonNull && prices[context.dataIndex] !== null) {
@@ -527,7 +477,7 @@ function PriceChart() {
                 }
                 return 'transparent';
               },
-              pointBorderColor: (context) => {
+              pointBorderColor: function(context) {
                 // Last point border color
                 const isLastNonNull = context.dataIndex === prices.findLastIndex(price => price !== null);
                 if (isLastNonNull && prices[context.dataIndex] !== null) {
@@ -538,14 +488,14 @@ function PriceChart() {
               pointBorderWidth: 2,
               pointHoverRadius: 4,
               // Determine line color based on latest price vs previous close
-              borderColor: (() => {
+              borderColor: function() {
                 const lastValidPrice = prices.filter(price => price !== null).pop();
                 return lastValidPrice && previousClose !== null 
                   ? (lastValidPrice > previousClose 
                      ? 'rgba(0, 128, 0, 1)'  // Green
                      : 'rgba(255, 0, 0, 1)') // Red
                   : 'rgba(128, 128, 128, 1)'; // Gray
-              })(),
+              }(),
             },
             // Update previous period's closing price horizontal reference line
             ...(previousClose !== null ? [{
@@ -644,11 +594,11 @@ function PriceChart() {
             {
               ...prev.datasets[0],
               data: newData,
-              pointRadius: (context) => {
+              pointRadius: function(context) {
                 // Only show dot for the last data point (current time)
                 return context.dataIndex === timeIndex ? 6 : 0;
               },
-              pointBackgroundColor: (context) => {
+              pointBackgroundColor: function(context) {
                 // Last point color matches line color
                 if (context.dataIndex === timeIndex) {
                   return closePrice > previousClose 
@@ -657,7 +607,7 @@ function PriceChart() {
                 }
                 return 'transparent';
               },
-              pointBorderColor: (context) => {
+              pointBorderColor: function(context) {
                 // Last point border color
                 if (context.dataIndex === timeIndex) {
                   return 'white';
@@ -715,7 +665,7 @@ function PriceChart() {
   useEffect(() => {
     setIsComponentReady(true);
     // Force set initial state
-    setInterval('1m');
+    setIntervalState('1m');
   }, []);
 
   const options = {
@@ -814,7 +764,7 @@ function PriceChart() {
                 return index % 5 === 0 ? label : '';
             }
           },
-          maxTicksLimit: (() => {
+          maxTicksLimit: (function() {
             switch (interval) {
               case '1m': return 8;   // Every 4 hours, total 6
               case '1w': return 3;   // Weekly interval, only show 3 labels
@@ -869,7 +819,7 @@ function PriceChart() {
         {/* Time interval toggle buttons */}
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Button 
-            onClick={() => setInterval('1m')}
+            onClick={() => setIntervalState('1m')}
             variant={(isComponentReady && interval === '1m') ? 'contained' : 'outlined'}
             color="primary"
             size="small"
@@ -877,7 +827,7 @@ function PriceChart() {
             Today
           </Button>
           <Button 
-            onClick={() => setInterval('1w')}
+            onClick={() => setIntervalState('1w')}
             variant={(isComponentReady && interval === '1w') ? 'contained' : 'outlined'}
             color="primary"
             size="small"
@@ -885,7 +835,7 @@ function PriceChart() {
             1 Week
           </Button>
           <Button 
-            onClick={() => setInterval('1M')}
+            onClick={() => setIntervalState('1M')}
             variant={(isComponentReady && interval === '1M') ? 'contained' : 'outlined'}
             color="primary"
             size="small"
@@ -893,7 +843,7 @@ function PriceChart() {
             1 Month
           </Button>
           <Button 
-            onClick={() => setInterval('3M')}
+            onClick={() => setIntervalState('3M')}
             variant={(isComponentReady && interval === '3M') ? 'contained' : 'outlined'}
             color="primary"
             size="small"
@@ -901,7 +851,7 @@ function PriceChart() {
             3 Months
           </Button>
           <Button 
-            onClick={() => setInterval('YTD')}
+            onClick={() => setIntervalState('YTD')}
             variant={(isComponentReady && interval === 'YTD') ? 'contained' : 'outlined'}
             color="primary"
             size="small"
@@ -909,7 +859,7 @@ function PriceChart() {
             YTD
           </Button>
           <Button 
-            onClick={() => setInterval('1Y')}
+            onClick={() => setIntervalState('1Y')}
             variant={(isComponentReady && interval === '1Y') ? 'contained' : 'outlined'}
             color="primary"
             size="small"
